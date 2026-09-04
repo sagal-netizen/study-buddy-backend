@@ -1,5 +1,24 @@
+import os
 import chromadb
-import ollama
+from mistralai.client import Mistral
+
+
+# =========================
+# MISTRAL CONFIGURATION
+# =========================
+
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
+
+if not MISTRAL_API_KEY:
+    raise RuntimeError(
+        "MISTRAL_API_KEY environment variable is not set."
+    )
+
+mistral_client = Mistral(
+    api_key=MISTRAL_API_KEY
+)
+
+MISTRAL_EMBED_MODEL = "mistral-embed"
 
 
 # =========================
@@ -9,7 +28,6 @@ import ollama
 client = chromadb.PersistentClient(
     path="./chroma_data"
 )
-
 
 collection = client.get_or_create_collection(
     name="study_materials"
@@ -24,12 +42,12 @@ def create_embedding(
     text: str
 ):
 
-    response = ollama.embeddings(
-        model="nomic-embed-text",
-        prompt=text
+    response = mistral_client.embeddings.create(
+        model=MISTRAL_EMBED_MODEL,
+        inputs=[text]
     )
 
-    return response["embedding"]
+    return response.data[0].embedding
 
 
 # =========================
