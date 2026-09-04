@@ -1,71 +1,24 @@
 import os
 
 import chromadb
-import ollama
-
+from dotenv import load_dotenv
+from mistralai.client import Mistral
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from dotenv import load_dotenv
-
-
-# =========================================================
-# ENVIRONMENT
-# =========================================================
 
 load_dotenv()
+
+
+# ==============================
+# DATABASE CONFIGURATION
+# ==============================
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not DATABASE_URL:
-    raise RuntimeError(
-        "DATABASE_URL environment variable is not set. "
-        "Add it to your .env file before starting the server."
-    )
+    raise RuntimeError("DATABASE_URL environment variable is not set.")
 
-# =========================================================
-# OLLAMA CONFIGURATION
-# =========================================================
-
-OLLAMA_BASE_URL = os.getenv(
-    "OLLAMA_BASE_URL",
-    "http://localhost:11434"
-)
-
-OLLAMA_CHAT_MODEL = os.getenv(
-    "OLLAMA_CHAT_MODEL",
-    "llama3.2"
-)
-
-OLLAMA_EMBED_MODEL = os.getenv(
-    "OLLAMA_EMBED_MODEL",
-    "nomic-embed-text"
-)
-
-# =========================================================
-# CHROMADB CONFIGURATION
-# =========================================================
-
-CHROMA_PERSIST_DIRECTORY = os.getenv(
-    "CHROMA_PERSIST_DIRECTORY",
-    "./chroma_data"
-)
-
-# =========================================================
-# UPLOAD DIRECTORY CONFIGURATION
-# =========================================================
-
-UPLOAD_DIRECTORY = os.getenv(
-    "UPLOAD_DIRECTORY",
-    ""          # empty string = use default relative to backend root
-)
-
-# =========================================================
-# SQLALCHEMY / POSTGRESQL
-# =========================================================
-
-engine = create_engine(
-    DATABASE_URL
-)
+engine = create_engine(DATABASE_URL)
 
 SessionLocal = sessionmaker(
     autocommit=False,
@@ -74,9 +27,42 @@ SessionLocal = sessionmaker(
 )
 
 
-# =========================================================
-# CHROMADB
-# =========================================================
+# ==============================
+# FILE UPLOAD CONFIGURATION
+# ==============================
+
+UPLOAD_DIRECTORY = os.getenv(
+    "UPLOAD_DIRECTORY",
+    "./uploads"
+)
+
+os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
+
+
+# ==============================
+# MISTRAL CONFIGURATION
+# ==============================
+
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
+
+if not MISTRAL_API_KEY:
+    raise RuntimeError("MISTRAL_API_KEY environment variable is not set.")
+
+mistral_client = Mistral(
+    api_key=MISTRAL_API_KEY
+)
+
+MISTRAL_EMBED_MODEL = "mistral-embed"
+
+
+# ==============================
+# CHROMA VECTOR DATABASE
+# ==============================
+
+CHROMA_PERSIST_DIRECTORY = os.getenv(
+    "CHROMA_PERSIST_DIRECTORY",
+    "./chroma_data"
+)
 
 client = chromadb.PersistentClient(
     path=CHROMA_PERSIST_DIRECTORY
@@ -87,38 +73,29 @@ collection = client.get_or_create_collection(
 )
 
 
-# =========================================================
-# CREATE EMBEDDING
-# =========================================================
+# ==============================
+# EMBEDDINGS
+# ==============================
 
-def create_embedding(
-    text: str
-):
-    ollama_client = ollama.Client(
-        host=OLLAMA_BASE_URL
+def create_embedding(text: str):
+    response = mistral_client.embeddings.create(
+        model=MISTRAL_EMBED_MODEL,
+        inputs=[text]
     )
 
-    response = ollama_client.embeddings(
-        model=OLLAMA_EMBED_MODEL,
-        prompt=text
-    )
-
-    return response["embedding"]
+    return response.data[0].embedding
 
 
-# =========================================================
-# ADD DOCUMENT TO CHROMADB
-# =========================================================
+# ==============================
+# ADD DOCUMENT
+# ==============================
 
 def add_document(
     document_id: str,
     text: str,
     metadata: dict
 ):
-
-    embedding = create_embedding(
-        text
-    )
+    embedding = create_embedding(text)
 
     collection.add(
         ids=[document_id],
@@ -128,23 +105,18 @@ def add_document(
     )
 
 
-# =========================================================
+# ==============================
 # SEARCH DOCUMENTS
-# =========================================================
+# ==============================
 
 def search_documents(
     query: str,
     number_of_results: int = 5
 ):
-
-    query_embedding = create_embedding(
-        query
-    )
+    query_embedding = create_embedding(query)
 
     results = collection.query(
-        query_embeddings=[
-            query_embedding
-        ],
+        query_embeddings=[query_embedding],
         n_results=number_of_results
     )
 
