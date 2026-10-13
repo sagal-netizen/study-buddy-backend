@@ -30,9 +30,19 @@ app = FastAPI()
 # CORS
 # =========================
 
+# FRONTEND_URL may hold several comma-separated origins.
+ALLOWED_ORIGINS = [
+    origin.strip().rstrip("/")
+    for origin in os.getenv(
+        "FRONTEND_URL",
+        "http://localhost:3000"
+    ).split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

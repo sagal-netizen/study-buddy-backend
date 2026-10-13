@@ -1,3 +1,6 @@
+import os
+import secrets
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -44,9 +47,13 @@ class RegisterUser(BaseModel):
     name: str
     email: str
     password: str
-    # role is intentionally NOT accepted from the client.
-    # Public registration always creates a student account.
-    # Role changes are admin-only via PUT /users/{id}/role.
+
+
+class RegisterAdmin(BaseModel):
+    name: str
+    email: str
+    password: str
+    admin_code: str
 
 
 class LoginUser(BaseModel):
@@ -59,7 +66,7 @@ class UpdateRole(BaseModel):
 
 
 # =========================
-# REGISTER  (public)
+# REGISTER STUDENT
 # =========================
 
 @router.post("/users/register")
@@ -78,8 +85,6 @@ def register_user(
             detail="Email already registered"
         )
 
-    # Role is always "student" for public registration.
-    # The client cannot supply or override this value.
     new_user = create_user(
         db,
         user.name,
@@ -100,7 +105,63 @@ def register_user(
 
 
 # =========================
-# LOGIN  (public)
+# REGISTER ADMIN
+# =========================
+
+@router.post("/users/admin/register")
+def register_admin(
+    user: RegisterAdmin,
+    db: Session = Depends(get_db)
+):
+    expected_code = os.getenv("ADMIN_REGISTRATION_CODE")
+
+    if not expected_code:
+        raise HTTPException(
+            status_code=503,
+            detail="Admin registration is not configured"
+        )
+
+    if not secrets.compare_digest(
+        user.admin_code,
+        expected_code
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid administrator registration code"
+        )
+
+    existing_user = get_user_by_email(
+        db,
+        user.email
+    )
+
+    if existing_user:
+        raise HTTPException(
+            status_code=400,
+            detail="Email already registered"
+        )
+
+    new_user = create_user(
+        db,
+        user.name,
+        user.email,
+        user.password,
+        "admin"
+    )
+
+    return {
+        "message": "Administrator account created successfully",
+        "user": {
+            "id": new_user.id,
+            "name": new_user.name,
+            "email": new_user.email,
+            "role": new_user.role
+        }
+    }
+
+
+# =========================
+# LOGIN
 # =========================
 
 @router.post("/users/login")
@@ -149,13 +210,12 @@ def login_user(
             "name": existing_user.name,
             "email": existing_user.email,
             "role": existing_user.role
-            # password is intentionally excluded
         }
     }
 
 
 # =========================
-# GET ALL USERS  (admin)
+# GET ALL USERS
 # =========================
 
 @router.get("/users")
@@ -171,7 +231,6 @@ def list_users(
             "name": user.name,
             "email": user.email,
             "role": user.role
-            # password intentionally excluded
         }
         for user in users
     ]
@@ -179,8 +238,6 @@ def list_users(
 
 # =========================
 # GET SINGLE USER
-# Authenticated user can read their own profile.
-# Admin can read any profile.
 # =========================
 
 @router.get("/users/{user_id}")
@@ -218,7 +275,7 @@ def get_single_user(
 
 
 # =========================
-# UPDATE USER ROLE  (admin)
+# UPDATE USER ROLE
 # =========================
 
 @router.put("/users/{user_id}/role")
@@ -261,7 +318,7 @@ def change_user_role(
 
 
 # =========================
-# DELETE USER  (admin)
+# DELETE USER
 # =========================
 
 @router.delete("/users/{user_id}")

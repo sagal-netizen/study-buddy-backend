@@ -3,7 +3,7 @@ from pathlib import Path
 from pypdf import PdfReader
 from docx import Document
 
-from app.database import add_document
+from app.ai.vector_store import add_document
 
 
 # =========================================================
