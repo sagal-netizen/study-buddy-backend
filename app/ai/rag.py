@@ -1,28 +1,5 @@
-import os
-
-from mistralai.client import Mistral
-
-from app.database import (
-    search_documents,
-)
-
-
-# =========================
-# MISTRAL CONFIGURATION
-# =========================
-
-MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
-
-if not MISTRAL_API_KEY:
-    raise RuntimeError(
-        "MISTRAL_API_KEY environment variable is not set."
-    )
-
-mistral_client = Mistral(
-    api_key=MISTRAL_API_KEY
-)
-
-MISTRAL_CHAT_MODEL = "mistral-small-latest"
+from app.ai.llm import chat
+from app.ai.vector_store import search_documents
 
 
 def ask_studybuddy(
@@ -31,15 +8,17 @@ def ask_studybuddy(
     course_id: int | None = None
 ):
 
-    results = search_documents(
-        question,
-        number_of_results
-    )
+    try:
+        results = search_documents(
+            question,
+            number_of_results,
+            course_id
+        )
+    except Exception as error:
+        print("Search error:", error)
+        results = {}
 
-    documents = results.get(
-        "documents",
-        [[]]
-    )[0]
+    documents = (results.get("documents") or [[]])[0]
 
     context = "\n\n".join(
         documents
@@ -112,26 +91,13 @@ Give a helpful response.
 
     try:
 
-        response = mistral_client.chat.complete(
-            model=MISTRAL_CHAT_MODEL,
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ]
-        )
-
-        answer = (
-            response.choices[0]
-            .message.content
-        )
+        answer = chat(prompt)
 
 
     except Exception as error:
 
         print(
-            "Mistral error:",
+            "AI error:",
             error
         )
 

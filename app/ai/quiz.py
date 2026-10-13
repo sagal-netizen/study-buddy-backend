@@ -1,26 +1,7 @@
 import json
-import os
 import random
 
-from mistralai.client import Mistral
-
-
-# =========================
-# MISTRAL CONFIGURATION
-# =========================
-
-MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
-
-if not MISTRAL_API_KEY:
-    raise RuntimeError(
-        "MISTRAL_API_KEY environment variable is not set."
-    )
-
-mistral_client = Mistral(
-    api_key=MISTRAL_API_KEY
-)
-
-MODEL = "mistral-small-latest"
+from app.ai.llm import chat
 
 
 def generate_quiz(
@@ -30,6 +11,7 @@ def generate_quiz(
 ):
 
     topic = topic.strip()
+    number_of_questions = max(1, min(number_of_questions, 20))
 
     if not topic:
 
@@ -162,21 +144,7 @@ option AND the requested answer position.
 
     try:
 
-        response = mistral_client.chat.complete(
-            model=MODEL,
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ]
-        )
-
-        content = (
-            response.choices[0]
-            .message.content
-            .strip()
-        )
+        content = chat(prompt).strip()
 
 
         # ----------------------------------------------------
@@ -256,9 +224,19 @@ option AND the requested answer position.
             if len(options) != 4:
                 continue
 
-            if not isinstance(
-                answer,
-                int
+            options = [str(option).strip() for option in options]
+
+            # options must be non-empty and distinct, otherwise the
+            # shuffle below could duplicate or lose the correct answer
+            if (
+                not all(options)
+                or len(set(options)) != 4
+            ):
+                continue
+
+            if (
+                not isinstance(answer, int)
+                or isinstance(answer, bool)
             ):
                 continue
 
